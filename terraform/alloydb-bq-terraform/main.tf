@@ -1,6 +1,5 @@
 # Action Items:
 # Add module to add VM within the VPC for psql client
-# Add service account impersonation
 # Add firewall rules to allow psql and ssh access to the VPC
 # Add compute engine start up script to install psql client
 # refactor resources to use modules
@@ -10,22 +9,214 @@
 # creating the database
 
 
-
-# provider "google" {
-#   credentials = file("terraform-key.json")
-#   project = var.project_name
-#   region  = var.region
-#   zone    = var.zone
-# }
-
 # Service account impersonation is detailed here: https://medium.com/google-cloud/a-hitchhikers-guide-to-gcp-service-account-impersonation-in-terraform-af98853ebd37
 # terraform information on serviec accounts is listed here: https://medium.com/google-cloud/a-hitchhikers-guide-to-gcp-service-account-impersonation-in-terraform-af98853ebd37
-# create VPC
-resource "google_compute_network" "vpc_network" {
-    name = var.vpcname
-    # specify cidr range that this can use
-    # use the suggested ranges 
+
+locals {
+  # IAM Permissions
+  sa_iam_permissions = toset(
+    ["roles/bigquery.dataEditor",
+      "roles/bigquery.jobUser",
+      "roles/bigquery.dataViewer",
+      "roles/bigquery.admin",
+      "roles/bigquery.user",
+      "roles/logging.admin",
+      "roles/logging.logWriter",
+      "roles/monitoring.metricWriter",
+      "roles/dataflow.admin",
+      "roles/dataflow.worker",
+      "roles/dataflow.developer",
+      "roles/compute.viewer",   
+      "roles/compute.networkUser",
+      "roles/storage.objectAdmin",
+      "roles/composer.ServiceAgentV2Ext",
+      "roles/storage.objectViewer",
+      "roles/secretmanager.secretAccessor"
+    ]
+  )
+  use_shared_vpc     = var.network_config != null
+  shared_vpc_project = try(var.network_config.host_project, "")
+
+  subnet_self_link = (
+    local.use_shared_vpc
+    ? var.network_config.subnet_self_links.subnet_self_link
+    : module.vpc.0.subnets_self_links[0]
+  )
+
+  vpc_self_link = (
+    local.use_shared_vpc
+    ? var.network_config.network_self_link
+    : module.vpc.0.network_self_link
+  )
+
+  subnet_name = (
+    local.use_shared_vpc
+    ? var.network_config.subnet_self_links.subnet_name
+    : module.vpc.0.subnets_names[0]
+  )
+
+  vpc_name = (
+    local.use_shared_vpc
+    ? var.network_config.network_name
+    : module.vpc.0.network_name
+  )
 }
+
+####################################################################################
+#Modules
+####################################################################################
+# Create service account for workload
+module "sa" {
+  source       = "terraform-google-modules/service-accounts/google"
+  version      = "4.1.1"
+  project_id   = var.project_id
+  names        = ["alloydb"]
+  display_name = "Data platform Orchestration service account"
+}
+
+resource "google_service_account_iam_binding" "sa_token_creator" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${module.sa.email}"
+  role               = "roles/iam.serviceAccountTokenCreator"
+  members            = ["serviceAccount:${var.deployment_service_account_email}"]
+}
+
+resource "google_project_iam_member" "sa_iam" {
+  for_each = local.sa_iam_permissions
+  project  = var.project_id
+  role     = each.key
+  member   = module.sa.iam_email
+  depends_on = [
+    module.sa
+  ]
+}
+
+module "vpc" {
+ count      = local.use_shared_vpc ? 0 : 1
+ source  = "terraform-google-modules/network/google"
+ version = "5.2.0"
+ project_id   = var.project_id
+ network_name = var.vpcname
+ mtu          = 1460
+
+  subnets = [
+    {
+      subnet_ip =         var.vpc_subnet_range
+      subnet_name          = "subnet"
+      subnet_region        = var.region
+      subnet_private_access = "true"
+      subnet_flow_logs      = "true"
+    }
+  ]
+}
+
+module "vpc_firewall" {
+  source       = "terraform-google-modules/network/google//modules/firewall-rules"
+  version      = "5.2.0"
+  count        = local.use_shared_vpc ? 0 : 1
+  project_id   = var.project_id
+  network_name = module.vpc.0.network_name
+  rules = [{
+    name                    = "alloydb-ingress-admin"
+    description             = "Access from the admin subnet to all subnets"
+    direction               = "INGRESS"
+    priority                = null
+    ranges                  = [var.vpc_subnet_range]
+    source_tags             = null
+    source_service_accounts = null
+    target_tags             = null
+    target_service_accounts = null
+    allow = [{
+      protocol = "all"
+      ports    = null
+    }]
+    deny = []
+    log_config = {
+      metadata = "INCLUDE_ALL_METADATA"
+    }
+  }]
+  depends_on = [
+    module.vpc
+  ]
+}
+
+module "router_nat" {
+  source  = "terraform-google-modules/cloud-router/google"
+  version = "3.0.0"
+  count   = local.use_shared_vpc ? 0 : 1
+
+  project = var.project_id
+  name    = "alloydb-default-router"
+  network = module.vpc.0.network_name
+  region  = var.region
+
+  nats = [{
+    name = "alloydb-default-nat"
+  }]
+  depends_on = [
+    module.vpc
+  ]
+}
+
+
+module "instance_template" {
+  source     = "terraform-google-modules/vm/google//modules/instance_template"
+  version    = "7.9.0"
+  region     = var.region
+  project_id = var.project_id
+  subnetwork = local.subnet_name
+  service_account = {
+    email  = module.sa.email
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+  }
+  machine_type         = "e2-micro"
+  source_image_family  = "debian-11"
+  source_image_project = "debian-cloud"
+  disk_size_gb         = 10
+  name_prefix          = "alloydb-psql"
+  preemptible          = true
+  labels = {
+    label = "alloydb"
+  }
+  depends_on = [
+    module.sa,
+    google_service_account_iam_binding.sa_token_creator
+  ]
+}
+
+# module "compute_instance" {
+#   source              = "terraform-google-modules/vm/google//modules/compute_instance"
+#   version             = "7.9.0"
+#   region              = var.region
+#   zone                = var.zone
+#   subnetwork          = local.subnet_self_link
+#   num_instances       = var.num_instances
+#   hostname            = "alloydb-cli"
+#   instance_template   = module.instance_template.self_link
+#   deletion_protection = false
+#   depends_on = [
+#     module.instance_template
+#   ]
+# }
+
+# module "iap_tunneling" {
+#   source                     = "terraform-google-modules/bastion-host/google//modules/iap-tunneling"
+#   version                    = "5.0.1"
+#   fw_name_allow_ssh_from_iap = "test-allow-ssh-from-iap-to-tunnel"
+#   project                    = var.project_id
+#   network                    = local.vpc_self_link
+#   service_accounts           = [module.sa.email]
+#   instances = [{
+#     name = "alloydb-cli-001"
+#     zone = var.zone
+#   }]
+#   members = [
+#     "serviceAccount:${var.deployment_service_account_email}"
+#   ]
+#   depends_on = [
+#     module.compute_instance
+#   ]
+# }
+
 
 # resource "google_compute_firewall" "default" {
 #   name    = "test-firewall"
@@ -45,42 +236,6 @@ resource "google_compute_network" "vpc_network" {
 
 # resource "google_compute_network" "default" {
 #   name = "test-network"
-# }
-
-
-#https://github.com/terraform-google-modules/terraform-google-network/tree/v5.2.0/modules/vpc
-# module "vpc" {
-#     source  = "terraform-google-modules/network/google//modules/vpc"
-#     version = "~> 2.0.0"
-
-#     project_id   = "<PROJECT ID>"
-#     network_name = "example-vpc"
-
-#     shared_vpc_host = false
-# }
-
-# module "instance_template" {
-#   source          = "../../../modules/instance_template"
-#   region          = var.region
-#   project_id      = var.project_id
-#   subnetwork      = var.subnetwork
-#   service_account = var.service_account
-# }
-
-# module "compute_instance" {
-#   source              = "../../../modules/compute_instance"
-#   region              = var.region
-#   zone                = var.zone
-#   subnetwork          = var.subnetwork
-#   num_instances       = var.num_instances
-#   hostname            = "instance-simple"
-#   instance_template   = module.instance_template.self_link
-#   deletion_protection = false
-
-#   access_config = [{
-#     nat_ip       = var.nat_ip
-#     network_tier = var.network_tier
-#   }, ]
 # }
 
 
@@ -137,82 +292,72 @@ resource "google_compute_network" "vpc_network" {
 # }
 
 # create private IP range for peering VPCs
-resource "google_compute_global_address" "private_ip_address" {
+# resource "google_compute_global_address" "private_ip_address" {
   
-  provider = google-beta
-  project = var.project_name
-  name          = "private-ip-address"
-  purpose       = "VPC_PEERING"
-  address_type  = "INTERNAL"
-  prefix_length = 16
-  # reference output of resource above and use the attribute
-  network = google_compute_network.vpc_network.id
-  depends_on = [google_compute_network.vpc_network]
-}
+#   provider = google-beta
+#   project = var.project_id
+#   name          = "private-ip-address"
+#   purpose       = "VPC_PEERING"
+#   address_type  = "INTERNAL"
+#   prefix_length = 16
+#   # reference output of resource above and use the attribute
+#   network = google_compute_network.vpc_network.id
+#   depends_on = [google_compute_network.vpc_network]
+# }
 
 
-#create vpc connection
-resource "google_service_networking_connection" "private_vpc_connection" {
-  provider = google-beta
-  network                 = google_compute_network.vpc_network.id
-  service                 = "servicenetworking.googleapis.com"
-  reserved_peering_ranges = [google_compute_global_address.private_ip_address.name]
-  depends_on = [google_compute_global_address.private_ip_address]
+# #create vpc connection
+# resource "google_service_networking_connection" "private_vpc_connection" {
+#   provider = google-beta
+#   network                 = google_compute_network.vpc_network.id
+#   service                 = "servicenetworking.googleapis.com"
+#   reserved_peering_ranges = [google_compute_global_address.private_ip_address.name]
+#   depends_on = [google_compute_global_address.private_ip_address]
   
-}
+# }
 
 
-resource "random_id" "db_name_suffix" {
-  byte_length = 4
-}
+# resource "random_id" "db_name_suffix" {
+#   byte_length = 4
+# }
 
-#create BQ dataset
-resource "google_bigquery_dataset" "dataset" {
-  dataset_id                  = "alloydata"
-  friendly_name               = "test"
-  description                 = "This is a test description"
-  location                    = "US"
-  default_table_expiration_ms = 3600000
+# #create BQ dataset
+# resource "google_bigquery_dataset" "dataset" {
+#   dataset_id                  = "alloydata"
+#   friendly_name               = "test"
+#   description                 = "This is a test description"
+#   location                    = "US"
+#   default_table_expiration_ms = 3600000
 
-  labels = {
-    env = "default"
-  }
+#   labels = {
+#     env = "default"
+#   }
 
-  access {
-    role          = "OWNER"
-    user_by_email = google_service_account.bqowner.email
-  }
+#   access {
+#     role          = "OWNER"
+#     user_by_email = google_service_account.bqowner.email
+#   }
 
-  access {
-    role   = "READER"
-    domain = "hashicorp.com"
-  }
-}
-# Identity and Access Management (IAM) API required
-resource "google_service_account" "bqowner" {
-  account_id = "bqowner"
-}
+#   access {
+#     role   = "READER"
+#     domain = "hashicorp.com"
+#   }
+# }
+# # Identity and Access Management (IAM) API required
+# resource "google_service_account" "bqowner" {
+#   account_id = "bqowner"
+# }
 
-resource "null_resource" "provision_alloydb" {
-    provisioner "local-exec" {
-        interpreter = ["/bin/bash", "-c"]
-        command     = <<EOF
-gcloud beta alloydb clusters create ${var.alloycluster} --password=${var.alloyclusterpassword} --network=${var.vpcname} --region=${var.region} --project=${var.project_name}
-gcloud beta alloydb instances create ${var.alloyinstance} --instance-type=${var.alloyinstancetype} --cpu-count=${var.alloyinstancecpuecount} --region=${var.region} --cluster=${var.alloycluster} --project=${var.project_name}
-EOF
-        }
-        depends_on = [google_service_networking_connection.private_vpc_connection]
-}
-
-#https://cloud.google.com/alloydb/docs/configure-connectivity
-# cannot make them dependent on other resources
-
-terraform {
-    backend "gcs" {
-        bucket = "remote-backend-looker-test119-0b5c"
-        prefix = "terraform-state-alloydb"
-    }
-}
+# resource "null_resource" "provision_alloydb" {
+#     provisioner "local-exec" {
+#         interpreter = ["/bin/bash", "-c"]
+#         command     = <<EOF
+# gcloud beta alloydb clusters create ${var.alloycluster} --password=${var.alloyclusterpassword} --network=${var.vpcname} --region=${var.region} --project=${var.project_id}
+# gcloud beta alloydb instances create ${var.alloyinstance} --instance-type=${var.alloyinstancetype} --cpu-count=${var.alloyinstancecpuecount} --region=${var.region} --cluster=${var.alloycluster} --project=${var.project_name}
+# EOF
+#         }
+#         depends_on = [google_service_networking_connection.private_vpc_connection]
+# }
 
 
 #https://medium.com/google-cloud/a-hitchhikers-guide-to-gcp-service-account-impersonation-in-terraform-af98853ebd37

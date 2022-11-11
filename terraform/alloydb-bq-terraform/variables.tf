@@ -1,4 +1,4 @@
-variable "project_name" {
+variable "project_id" {
   description = "Value of the GCP Project the databases and pipeline will be defined in"
   type        = string
   default     = "lyons-terraform-sandbox"
@@ -16,11 +16,6 @@ variable "zone" {
   default     = "us-central1c"
 }
 
-variable "subnetwork" {
-  description = "The subnetwork selflink to host the compute instances in"
-  type        = string
-  default     = ""
-}
 
 variable "num_instances" {
   description = "number of VM instances deployed"
@@ -34,10 +29,10 @@ variable "network_tier" {
   default     = "PREMIUM"
 }
 
-variable "nat_ip" {
+variable "vpc_subnet_range" {
   description = "Public ip address"
   type        = string
-  default     = "us-central1c"
+  default     = "10.0.0.0/20"
 }
 
 variable "vpcname" {
@@ -46,11 +41,36 @@ variable "vpcname" {
   default     = "alloyvpc"
 }
 
+variable "network_config" {
+  description = "Shared VPC network configurations to use. If null networks will be created in projects with preconfigured values."
+  type = object({
+    host_project      = string
+    network_name      = string
+    network_self_link = string
+    subnet_self_links = object({
+      subnet_name      = string
+      subnet_self_link = string
+    })
+    composer_ip_ranges = object({
+      cloudsql   = string
+      gke_master = string
+      web_server = string
+    })
+    composer_secondary_ranges = object({
+      pods     = string
+      services = string
+    })
+  })
+  default = null
+}
 
-variable "rangename" {
-  description = "Name of range"
+variable "project_number" {
   type        = string
-  default     = "vpcrange"
+  description = "The GCP Project Number"
+  validation {
+    condition     = length(var.project_number) > 0
+    error_message = "The project_id is required."
+  }
 }
 
 variable "alloycluster" {
@@ -83,7 +103,7 @@ variable "alloyinstancetype" {
   default     = "PRIMARY"
 }
 
-varaible "deployment_service_account_email" {
+variable "deployment_service_account_email" {
   type = string
   description = " service accouint email"
 }

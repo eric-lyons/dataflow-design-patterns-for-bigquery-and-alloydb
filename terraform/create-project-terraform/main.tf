@@ -38,7 +38,9 @@ locals {
       "roles/iam.securityAdmin",
       "roles/iam.serviceAccountAdmin",
       "roles/storage.admin",
-      "roles/iam.serviceAccountUser"
+      "roles/iam.serviceAccountUser",
+      "roles/dataflow.admin",
+      "roles/compute.admin"
     ]
   )
 }
