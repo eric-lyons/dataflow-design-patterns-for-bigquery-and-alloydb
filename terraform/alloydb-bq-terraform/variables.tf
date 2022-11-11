@@ -13,7 +13,7 @@ variable "region" {
 variable "zone" {
   description = "Value of the GCP zone the resources will be deployed in"
   type        = string
-  default     = "us-central1c"
+  default     = "us-central1-c"
 }
 
 
