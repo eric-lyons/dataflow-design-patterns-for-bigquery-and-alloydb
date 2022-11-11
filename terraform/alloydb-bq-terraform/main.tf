@@ -231,7 +231,7 @@ resource "google_compute_global_address" "private_ip_address" {
   name          = "private-ip-address"
   purpose       = "VPC_PEERING"
   address_type  = "INTERNAL"
-  prefix_length = 16
+  prefix_length = 24
   network = local.vpc_self_link
   depends_on = [module.vpc]
 }
@@ -263,6 +263,22 @@ gcloud beta alloydb instances create ${var.alloyinstance} --instance-type=${var.
 EOF
         }
         depends_on = [google_service_networking_connection.private_vpc_connection]
+}
+
+
+resource "null_resource" "provision_db" {
+    provisioner "local-exec" {
+        interpreter = ["/bin/bash", "-c"]
+        command     = <<EOF
+gcloud compute ssh alloydb-cli-001 --zone=${var.zone} --command="bash -s" <<EOF
+sudo apt-get update -y
+sudo apt-get install postgresql-client -y
+psql -h $(gcloud beta alloydb instances describe thealloyinstance --cluster=thealloycluser --region=${var.region} --flatten=ipAddress --format="value(scope())") -U postgres
+CREATE DATABASE alloydb_test;
+EOF"
+EOF
+}
+        depends_on = [null_resource.provision_alloydb]
 }
 
 # resource "google_compute_firewall" "default" {
@@ -362,205 +378,3 @@ EOF
 #   triggers = {
 #     project_id = var.project_id
 #   }
-
-# We define a the vm firewall rules:
-# module "vm-looker-firewall_rules" {
-#   source  = "terraform-google-modules/network/google//modules/firewall-rules"
-#   version = "4.1.0"
-
-#   project_id   = var.project
-#   network_name = module.looker_vpc.network_name
-
-#   rules = [
-#     {
-#       name                    = "looker-firewall-allow-node-internal"
-#       description             = null
-#       direction               = "INGRESS"
-#       priority                = null
-#       ranges                  = [element(module.looker_vpc.subnets_ips, 0)]
-#       source_tags             = null
-#       source_service_accounts = null
-#       target_tags             = ["looker-node"]
-#       target_service_accounts = null
-#       allow = [{
-#         protocol = "tcp"
-#         ports    = ["1551", "61616", "1552", "8983", "9090"]
-#       }]
-#       deny = []
-#       log_config = {
-#         metadata = "INCLUDE_ALL_METADATA"
-#       }
-#     },
-#     {
-#       name                    = "looker-firewall-allow-nfs-internal"
-#       description             = null
-#       direction               = "INGRESS"
-#       priority                = null
-#       ranges                  = [element(module.looker_vpc.subnets_ips, 0)]
-#       source_tags             = null
-#       source_service_accounts = null
-#       target_tags             = ["looker"]
-#       target_service_accounts = null
-#       allow = [{
-#         protocol = "tcp"
-#         ports    = ["2049", "4045", "111", "2046"]
-#       }]
-#       deny = []
-#       log_config = {
-#         metadata = "INCLUDE_ALL_METADATA"
-#       }
-#     },
-#     {
-#       name                    = "looker-firewall-gfe"
-#       description             = null
-#       direction               = "INGRESS"
-#       priority                = null
-#       ranges                  = ["130.211.0.0/22", "35.191.0.0/16"]
-#       source_tags             = null
-#       source_service_accounts = null
-#       target_tags             = ["looker-node"]
-#       target_service_accounts = null
-#       allow = [{
-#         protocol = "tcp"
-#         ports    = ["9999", "19999"]
-#       }]
-#       deny = []
-#       log_config = {
-#         metadata = "INCLUDE_ALL_METADATA"
-#       }
-#     },
-#     {
-#       name                    = "looker-firewall-iap"
-#       description             = null
-#       direction               = "INGRESS"
-#       priority                = null
-#       ranges                  = ["35.235.240.0/20"]
-#       source_tags             = null
-#       source_service_accounts = null
-#       target_tags             = null
-#       target_service_accounts = null
-#       allow = [{
-#         protocol = "tcp"
-#         ports    = ["22"]
-#       }]
-#       deny = []
-#       log_config = {
-#         metadata = "INCLUDE_ALL_METADATA"
-#       }
-#     }
-#   ]
-# }
-# Set up Private Services access. Private Services are used to securely connect
-# to Cloud SQL, Filestore, and Memorystore
-# module "private_service_access" {
-#   source  = "GoogleCloudPlatform/sql-db/google//modules/private_service_access"
-#   version = "9.0.0"
-
-#   project_id    = var.project
-#   vpc_network   = element(split("/", module.looker_vpc.network_self_link), length(split("/", module.looker_vpc.network_self_link)) - 1) # https://github.com/terraform-google-modules/terraform-google-sql-db/issues/176
-#   address       = local.private_ip_start
-#   ip_version    = "IPV4"
-#   prefix_length = local.private_ip_block
-# }
-
-# module "cloud_router" {
-#   source  = "terraform-google-modules/cloud-router/google"
-#   version = "1.3.0"
-
-#   project = var.project
-#   name    = "looker-router"
-#   network = module.looker_vpc.network_name
-#   region  = var.region
-
-#   nats = [{
-#     name = "looker-nat"
-#   }]
-# }
-
-# # We define a the vm firewall rules:
-# module "vm-looker-firewall_rules" {
-#   source  = "terraform-google-modules/network/google//modules/firewall-rules"
-#   version = "4.1.0"
-
-#   project_id   = var.project
-#   network_name = module.looker_vpc.network_name
-
-#   rules = [
-#     {
-#       name                    = "looker-firewall-allow-node-internal"
-#       description             = null
-#       direction               = "INGRESS"
-#       priority                = null
-#       ranges                  = [element(module.looker_vpc.subnets_ips, 0)]
-#       source_tags             = null
-#       source_service_accounts = null
-#       target_tags             = ["looker-node"]
-#       target_service_accounts = null
-#       allow = [{
-#         protocol = "tcp"
-#         ports    = ["1551", "61616", "1552", "8983", "9090"]
-#       }]
-#       deny = []
-#       log_config = {
-#         metadata = "INCLUDE_ALL_METADATA"
-#       }
-#     },
-#     {
-#       name                    = "looker-firewall-allow-nfs-internal"
-#       description             = null
-#       direction               = "INGRESS"
-#       priority                = null
-#       ranges                  = [element(module.looker_vpc.subnets_ips, 0)]
-#       source_tags             = null
-#       source_service_accounts = null
-#       target_tags             = ["looker"]
-#       target_service_accounts = null
-#       allow = [{
-#         protocol = "tcp"
-#         ports    = ["2049", "4045", "111", "2046"]
-#       }]
-#       deny = []
-#       log_config = {
-#         metadata = "INCLUDE_ALL_METADATA"
-#       }
-#     },
-#     {
-#       name                    = "looker-firewall-gfe"
-#       description             = null
-#       direction               = "INGRESS"
-#       priority                = null
-#       ranges                  = ["130.211.0.0/22", "35.191.0.0/16"]
-#       source_tags             = null
-#       source_service_accounts = null
-#       target_tags             = ["looker-node"]
-#       target_service_accounts = null
-#       allow = [{
-#         protocol = "tcp"
-#         ports    = ["9999", "19999"]
-#       }]
-#       deny = []
-#       log_config = {
-#         metadata = "INCLUDE_ALL_METADATA"
-#       }
-#     },
-#     {
-#       name                    = "looker-firewall-iap"
-#       description             = null
-#       direction               = "INGRESS"
-#       priority                = null
-#       ranges                  = ["35.235.240.0/20"]
-#       source_tags             = null
-#       source_service_accounts = null
-#       target_tags             = null
-#       target_service_accounts = null
-#       allow = [{
-#         protocol = "tcp"
-#         ports    = ["22"]
-#       }]
-#       deny = []
-#       log_config = {
-#         metadata = "INCLUDE_ALL_METADATA"
-#       }
-#     }
-#   ]
-# }
