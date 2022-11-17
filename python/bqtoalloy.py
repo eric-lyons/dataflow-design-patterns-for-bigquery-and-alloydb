@@ -2,7 +2,7 @@
 # https://cloud.google.com/dataflow/docs/guides/templates/creating-templates#python
 # https://cloud.google.com/dataflow/docs/guides/templates/using-flex-templates
 # https://yaqs.corp.google.com/eng/q/8693213918220255232
-
+# https://henrysuryawirawan.com/posts/dataflow-secret-manager/
 import os
 import argparse
 import apache_beam as beam
@@ -138,7 +138,6 @@ def run(save_main_session=True):
 
         )
         
-
 
 if __name__ == '__main__':
     logging.getLogger().setLevel(logging.INFO)
