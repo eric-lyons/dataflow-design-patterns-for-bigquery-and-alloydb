@@ -79,12 +79,13 @@ class db_reader():
         self.dataset = dataset
         self.table = table
         self.limit = limit
-
+        
+    # this defines the query that will be run against the BigQuery table for the source of the data. 
     def sql_query(self):
         sql = f'SELECT * FROM `{self.project}.{self.dataset}.{self.table}` 'f'LIMIT {self.limit}'
         return sql
 
-
+# this defines the connection to AlloyDB.
 class db_writer():
     def __init__(self, hostname, port, username, password, database_name, table_name):
         self.hostname = hostname
@@ -93,7 +94,7 @@ class db_writer():
         self.password = password
         self.database_name = database_name
         self.table_name = table_name
-
+    # this also could be refactored to use another JDBC driver if you wish to adapt this for a different SQL dialect.
     def sink_config(self):
         sink_config = relational_db.SourceConfiguration(
             drivername='postgresql+pg8000',
@@ -106,7 +107,7 @@ class db_writer():
         )
 
         return sink_config
-
+    #
     def table_config(self):
         table_config = relational_db.TableConfiguration(
             name=self.table_name,
@@ -114,7 +115,7 @@ class db_writer():
         )
         return table_config
 
-
+# this is the controller function
 def run(save_main_session=True):
     beam_options = PipelineOptions()
     args = beam_options.view_as(MyOptions)
