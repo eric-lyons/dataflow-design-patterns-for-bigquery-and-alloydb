@@ -1,0 +1,2 @@
+apache-beam[gcp]==2.41.0
+beam-nuggets==0.18.1

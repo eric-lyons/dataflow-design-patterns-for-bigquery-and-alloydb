@@ -10,12 +10,12 @@
       "helpText": "Name of the input PubSub subscription to consume from."
     },
     {
-        "name": "destination_ip",
+        "name": "destinationip",
         "label": "alloy db cluster ip.",
         "helpText": "alloy db cluster ip"
       },
     {
-        "name": "destination_password",
+        "name": "destinationpassword",
         "label": "alloy db password",
         "helpText": "alloy db password"
     },
@@ -30,7 +30,7 @@
         "helpText": "alloydb database name"
       },
       {
-        "name": "project_id",
+        "name": "bqprojectid",
         "label": "BQ project_id",
         "helpText": "BQ project_id"
       },
@@ -40,10 +40,10 @@
         "helpText": "alloy db port"
       },
     {
-        "name": "destination_table",
+        "name": "destinationtable",
         "label": "alloy db table",
         "helpText": "alloy db table"
-       
+
       },
     {
         "name": "limit",
@@ -56,6 +56,6 @@
       "helpText": "Name of the BigQuery output table name.",
       "isOptional": true
     }
-    
+
   ]
 }
