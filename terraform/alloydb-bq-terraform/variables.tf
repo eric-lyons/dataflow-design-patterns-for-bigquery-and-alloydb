@@ -1,109 +1,102 @@
-variable "project_id" {
-  description = "Value of the GCP Project the databases and pipeline will be defined in"
-  type        = string
-  default     = "lyons-terraform-sandbox"
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+variable "alloy" {
+  type = object({
+    alloycluster           = string
+    alloyclusterpassword   = string
+    alloyinstance          = string
+    alloyinstancecpuecount = number
+    alloyinstancetype      = string
+  })
+  default = {
+    alloycluster           = "thealloycluser"
+    alloyclusterpassword   = "passwordforinstance"
+    alloyinstance          = "thealloyinstance "
+    alloyinstancecpuecount = 8
+    alloyinstancetype      = "PRIMARY"
+  }
 }
 
-variable "region" {
-  description = "Value of the GCP region the resources will be deployed in"
-  type        = string
-  default     = "us-central1"
+variable "bq" {
+  description = "Shared VPC network configurations to use. If null networks will be created in projects with preconfigured values."
+  type = object({
+    dataset_name          = string
+    table_name            = string
+  })
+  default = null
 }
 
-variable "zone" {
-  description = "Value of the GCP zone the resources will be deployed in"
-  type        = string
-  default     = "us-central1-c"
+variable "cmek_encryption" {
+  description = "Flag to enable CMEK on GCP resources created."
+  type        = bool
+  default     = false
 }
 
-
-variable "num_instances" {
-  description = "number of VM instances deployed"
-  type        = number
-  default     = 1
+variable "deployment_service_account_email" {
+  type        = string
+  description = " service accouint email"
 }
 
-variable "network_tier" {
-  description = "Public ip address"
-  type        = string
-  default     = "PREMIUM"
-}
-
-variable "vpc_subnet_range" {
-  description = "Public ip address"
-  type        = string
-  default     = "10.0.0.0/20"
-}
-
-variable "vpcname" {
-  description = "Name of the VPC the databases will be deployed in"
-  type        = string
-  default     = "alloyvpc"
+variable "data_eng_principals" {
+  description = "Groups with Service Account Token creator role on service accounts in IAM format, eg 'group:group@domain.com'."
+  type        = list(string)
+  default     = []
 }
 
 variable "network_config" {
   description = "Shared VPC network configurations to use. If null networks will be created in projects with preconfigured values."
   type = object({
-    host_project      = string
-    network_name      = string
-    network_self_link = string
-    subnet_self_links = object({
-      subnet_name      = string
-      subnet_self_link = string
-    })
-    composer_ip_ranges = object({
-      cloudsql   = string
-      gke_master = string
-      web_server = string
-    })
-    composer_secondary_ranges = object({
-      pods     = string
-      services = string
-    })
+    host_project     = string
+    vpc_name         = string
+    vpc_self_link    = string
+    subnet_self_link = string
   })
   default = null
 }
 
-variable "project_number" {
+variable "prefix" {
+  description = "Prefix used for resource names."
   type        = string
-  description = "The GCP Project Number"
   validation {
-    condition     = length(var.project_number) > 0
-    error_message = "The project_id is required."
+    condition     = var.prefix != ""
+    error_message = "Prefix cannot be empty."
   }
 }
 
-variable "alloycluster" {
-  description = "Name of alloydb cluster"
+variable "project_create" {
+  description = "Provide values if project creation is needed, uses existing project if null. Parent is in 'folders/nnn' or 'organizations/nnn' format."
+  type = object({
+    billing_account_id = string
+    parent             = string
+  })
+  default = null
+}
+
+variable "project_id" {
+  description = "Project id, references existing project if `project_create` is null."
   type        = string
-  default     = "thealloycluser"
 }
 
-variable "alloyclusterpassword" {
-  description = "Name of alloydb instance"
+variable "region" {
+  description = "The region where resources will be deployed."
   type        = string
-  default     = "passwordforinstance"
+  default     = "europe-west1"
 }
 
-variable "alloyinstance" {
-  description = "Name of alloydb instance"
+variable "vpc_subnet_range" {
+  description = "Ip range used for the VPC subnet created for the example."
   type        = string
-  default     = "thealloyinstance"
-}
-
-variable "alloyinstancecpuecount" {
-  description = "count of alloydbcpu"
-  type        = number
-  default     = 8
-}
-
-variable "alloyinstancetype" {
-  description = "type of alloy instance"
-  type        = string
-  default     = "PRIMARY"
-}
-
-variable "deployment_service_account_email" {
-  type = string
-  description = " service accouint email"
+  default     = "10.0.0.0/20"
 }

@@ -38,6 +38,7 @@ locals {
       "roles/iam.securityAdmin",
       "roles/iam.serviceAccountAdmin",
       "roles/storage.admin",
+      "roles/storage.objectViewer",
       "roles/iam.serviceAccountUser",
       "roles/dataflow.admin",
       "roles/compute.admin"
@@ -84,9 +85,9 @@ module "project_services" {
     "iap.googleapis.com",
     "dataflow.googleapis.com",
     "alloydb.googleapis.com"
-
   ]
 }
+
 
 resource "google_project_iam_member" "sa_deployment_iam_permissions" {
   for_each = local.sa_deployment_iam_permissions
@@ -97,6 +98,17 @@ resource "google_project_iam_member" "sa_deployment_iam_permissions" {
     module.project_factory
   ]
 }
+
+
+resource "google_service_account_iam_binding" "composer_sa_deployment_iam_permissions_sa_user" {
+  service_account_id = "projects/${module.project_factory.project_id}/serviceAccounts/${module.project_factory.service_account_email}"
+  role               = "roles/iam.serviceAccountUser"
+  members            = ["user:${var.gcp_account_name}"]
+  depends_on = [
+    google_project_iam_member.sa_deployment_iam_permissions
+  ]
+}
+
 
 resource "google_service_account_iam_binding" "composer_sa_deployment_iam_permissions_token_creator" {
   service_account_id = "projects/${module.project_factory.project_id}/serviceAccounts/${module.project_factory.service_account_email}"

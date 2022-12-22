@@ -1,380 +1,139 @@
-# Action Items:
-# Add module to add VM within the VPC for psql client
-# Add firewall rules to allow psql and ssh access to the VPC
-# Add compute engine start up script to install psql client
-# refactor resources to use modules
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 locals {
-  # IAM Permissions
-  sa_iam_permissions = toset(
-    ["roles/bigquery.dataEditor",
-      "roles/bigquery.jobUser",
-      "roles/bigquery.dataViewer",
-      "roles/bigquery.admin",
-      "roles/bigquery.user",
-      "roles/logging.admin",
-      "roles/logging.logWriter",
-      "roles/monitoring.metricWriter",
-      "roles/dataflow.admin",
-      "roles/dataflow.worker",
-      "roles/dataflow.developer",
-      "roles/compute.viewer",   
-      "roles/compute.networkUser",
-      "roles/storage.objectAdmin",
-      "roles/composer.ServiceAgentV2Ext",
-      "roles/storage.objectViewer",
-      "roles/secretmanager.secretAccessor"
+  iam = {
+    # GCS roles
+    "roles/storage.objectAdmin" = [
+      module.service-account-df.iam_email,
+      module.service-account-landing.iam_email
+    ],
+    "roles/secretmanager.secretAccessor" = [
+      module.service-account-df.iam_email,
+      module.service-account-orch.iam_email
+    ],
+    "roles/storage.objectViewer" = [
+      module.service-account-orch.iam_email,
+    ],
+    # BigQuery roles
+    "roles/bigquery.admin" = concat([
+      module.service-account-orch.iam_email,
+      ], var.data_eng_principals
+    )
+    "roles/bigquery.dataEditor" = [
+      module.service-account-df.iam_email,
+      module.service-account-bq.iam_email
     ]
-  )
-  use_shared_vpc     = var.network_config != null
-  shared_vpc_project = try(var.network_config.host_project, "")
-
-  subnet_self_link = (
-    local.use_shared_vpc
-    ? var.network_config.subnet_self_links.subnet_self_link
-    : module.vpc.0.subnets_self_links[0]
-  )
-
-  vpc_self_link = (
-    local.use_shared_vpc
-    ? var.network_config.network_self_link
-    : module.vpc.0.network_self_link
-  )
-
-  subnet_name = (
-    local.use_shared_vpc
-    ? var.network_config.subnet_self_links.subnet_name
-    : module.vpc.0.subnets_names[0]
-  )
-
-  vpc_name = (
-    local.use_shared_vpc
-    ? var.network_config.network_name
-    : module.vpc.0.network_name
-  )
-}
-
-####################################################################################
-#Modules
-####################################################################################
-# Create service account for workload
-module "sa" {
-  source       = "terraform-google-modules/service-accounts/google"
-  version      = "4.1.1"
-  project_id   = var.project_id
-  names        = ["alloydb"]
-  display_name = "Data platform Orchestration service account"
-}
-
-resource "google_service_account_iam_binding" "sa_token_creator" {
-  service_account_id = "projects/${var.project_id}/serviceAccounts/${module.sa.email}"
-  role               = "roles/iam.serviceAccountTokenCreator"
-  members            = ["serviceAccount:${var.deployment_service_account_email}"]
-}
-
-resource "google_project_iam_member" "sa_iam" {
-  for_each = local.sa_iam_permissions
-  project  = var.project_id
-  role     = each.key
-  member   = module.sa.iam_email
-  depends_on = [
-    module.sa
-  ]
-}
-
-module "vpc" {
- count      = local.use_shared_vpc ? 0 : 1
- source  = "terraform-google-modules/network/google"
- version = "5.2.0"
- project_id   = var.project_id
- network_name = var.vpcname
- mtu          = 1460
-
-  subnets = [
-    {
-      subnet_ip =         var.vpc_subnet_range
-      subnet_name          = "subnet"
-      subnet_region        = var.region
-      subnet_private_access = "true"
-      subnet_flow_logs      = "true"
-    }
-  ]
-}
-
-module "vpc_firewall" {
-  source       = "terraform-google-modules/network/google//modules/firewall-rules"
-  version      = "5.2.0"
-  count        = local.use_shared_vpc ? 0 : 1
-  project_id   = var.project_id
-  network_name = module.vpc.0.network_name
-  rules = [{
-    name                    = "alloydb-ingress-admin"
-    description             = "Access from the admin subnet to all subnets"
-    direction               = "INGRESS"
-    priority                = null
-    ranges                  = [var.vpc_subnet_range]
-    source_tags             = null
-    source_service_accounts = null
-    target_tags             = null
-    target_service_accounts = null
-    allow = [{
-      protocol = "all"
-      ports    = null
-    }]
-    deny = []
-    log_config = {
-      metadata = "INCLUDE_ALL_METADATA"
-    }
-  }]
-  depends_on = [
-    module.vpc
-  ]
-}
-
-module "router_nat" {
-  source  = "terraform-google-modules/cloud-router/google"
-  version = "3.0.0"
-  count   = local.use_shared_vpc ? 0 : 1
-
-  project = var.project_id
-  name    = "alloydb-default-router"
-  network = module.vpc.0.network_name
-  region  = var.region
-
-  nats = [{
-    name = "alloydb-default-nat"
-  }]
-  depends_on = [
-    module.vpc
-  ]
-}
-
-
-module "instance_template" {
-  source     = "terraform-google-modules/vm/google//modules/instance_template"
-  version    = "7.9.0"
-  region     = var.region
-  project_id = var.project_id
-  subnetwork = local.subnet_name
-  service_account = {
-    email  = module.sa.email
-    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+    "roles/bigquery.dataViewer" = [
+      module.service-account-bq.iam_email,
+      module.service-account-orch.iam_email
+    ]
+    "roles/bigquery.jobUser" = [
+      module.service-account-df.iam_email,
+      module.service-account-bq.iam_email
+    ]
+    "roles/bigquery.user" = [
+      module.service-account-bq.iam_email,
+      module.service-account-df.iam_email
+    ]
+    # common roles
+    "roles/logging.admin" = var.data_eng_principals
+    "roles/logging.logWriter" = [
+      module.service-account-bq.iam_email,
+      module.service-account-landing.iam_email,
+      module.service-account-orch.iam_email,
+    ]
+    "roles/monitoring.metricWriter" = [
+      module.service-account-bq.iam_email,
+      module.service-account-landing.iam_email,
+      module.service-account-orch.iam_email,
+    ]
+    "roles/iam.serviceAccountUser" = [
+      module.service-account-orch.iam_email
+    ]
+    "roles/iam.serviceAccountTokenCreator" = concat(
+      var.data_eng_principals
+    )
+    # Dataflow roles
+    "roles/dataflow.admin" = concat(
+      [module.service-account-orch.iam_email],
+      var.data_eng_principals
+    )
+    "roles/dataflow.worker" = [
+      module.service-account-df.iam_email,
+    ]
+    "roles/dataflow.developer" = var.data_eng_principals
+    "roles/compute.viewer"     = var.data_eng_principals
+    # network roles
+    "roles/compute.networkUser" = [
+      module.service-account-df.iam_email,
+      "serviceAccount:${module.project.service_accounts.robots.dataflow}"
+    ]
   }
-  machine_type         = "e2-micro"
-  source_image_family  = "debian-11"
-  source_image_project = "debian-cloud"
-  disk_size_gb         = 10
-  name_prefix          = "alloydb-psql"
-  preemptible          = true
-  labels = {
-    label = "alloydb"
+  network_subnet_selflink = try(
+    module.vpc[0].subnets["${var.region}/subnet"].self_link,
+    var.network_config.subnet_self_link
+  )
+  shared_vpc_bindings = {
+    "roles/compute.networkUser" = [
+      "robot-df", "sa-df-worker"
+    ]
   }
-  depends_on = [
-    module.sa,
-    google_service_account_iam_binding.sa_token_creator
-  ]
-}
-
-module "compute_instance" {
-  source              = "terraform-google-modules/vm/google//modules/compute_instance"
-  version             = "7.9.0"
-  region              = var.region
-  zone                = var.zone
-  subnetwork          = local.subnet_self_link
-  num_instances       = var.num_instances
-  hostname            = "alloydb-cli"
-  instance_template   = module.instance_template.self_link
-  deletion_protection = false
-  depends_on = [
-    module.instance_template
-  ]
-}
-
-module "iap_tunneling" {
-  source                     = "terraform-google-modules/bastion-host/google//modules/iap-tunneling"
-  version                    = "5.0.1"
-  fw_name_allow_ssh_from_iap = "test-allow-ssh-from-iap-to-tunnel"
-  project                    = var.project_id
-  network                    = local.vpc_self_link
-  service_accounts           = [module.sa.email]
-  instances = [{
-    name = "alloydb-cli-001"
-    zone = var.zone
-  }]
-  members = [
-    "serviceAccount:${var.deployment_service_account_email}"
-  ]
-  depends_on = [
-    module.compute_instance
-  ]
-}
-
-
-# BigQuery
-module "bq_dataset" {
-  source     = "terraform-google-modules/bigquery/google"
-  version    = "5.4.1"
-  project_id = var.project_id
-  dataset_id = "alloy_db_activity"
-  location   = "US"
-  dataset_labels = {
-    label = "alloy"
+  # reassemble in a format suitable for for_each
+  shared_vpc_bindings_map = {
+    for binding in flatten([
+      for role, members in local.shared_vpc_bindings : [
+        for member in members : { role = role, member = member }
+      ]
+    ]) : "${binding.role}-${binding.member}" => binding
   }
-  depends_on = [
-    module.sa
-  ]
-  delete_contents_on_destroy = true
+  shared_vpc_project = try(var.network_config.host_project, null)
+  shared_vpc_role_members = {
+    robot-df     = "serviceAccount:${module.project.service_accounts.robots.dataflow}"
+    sa-df-worker = module.service-account-df.iam_email
+  }
+
+  # reassemble vpc/subnet references
+  vpc_name = local.use_shared_vpc ? module.vpc[0].name : var.network_config.vpc_name
+  vpc_self_link = local.use_shared_vpc ? module.vpc[0].self_link : var.network_config.vpc_self_link
+  subnet_self_link = local.use_shared_vpc ? values(module.vpc.0.subnet_self_links)[0] : var.network_config.subnet_self_link
+  
+  # reassemble bq_info
+  bq_dataset_id = use_bq_dataset ? module.bigquery-dataset.dataset_id : var.bq.dataset_name
+  bq_table_id = use_bq_dataset ? module.bigquery-dataset.tables["person"].table_id : var.bq.table_name 
+  
+  # bring your own assets
+  use_shared_vpc = var.network_config != null
+  use_bq_dataset     = var.bq_dataset != null
 }
 
-resource "google_compute_global_address" "private_ip_address" {
-  project = var.project_id
-  name          = "private-ip-address"
-  purpose       = "VPC_PEERING"
-  address_type  = "INTERNAL"
-  prefix_length = 24
-  network = local.vpc_self_link
-  depends_on = [module.vpc]
+module "project" {
+  source         = "github.com/GoogleCloudPlatform/cloud-foundation-fabric/modules/project"
+  name           = var.project_id
+  project_create = false
+
+  # additive IAM bindings avoid disrupting bindings in existing project
+  iam_additive = local.iam
+  shared_vpc_service_config = local.shared_vpc_project == null ? null : {
+    attach       = true
+    host_project = local.shared_vpc_project
+  }
 }
 
-# #create vpc connection
-resource "google_service_networking_connection" "private_vpc_connection" {
-  network                 = local.vpc_self_link
-  service                 = "servicenetworking.googleapis.com"
-  reserved_peering_ranges = [google_compute_global_address.private_ip_address.name]
-  depends_on = [google_compute_global_address.private_ip_address]
+resource "google_project_iam_member" "shared_vpc" {
+  for_each = local.use_shared_vpc ? local.shared_vpc_bindings_map : {}
+  project  = var.network_config.host_project
+  role     = each.value.role
+  member   = lookup(local.shared_vpc_role_members, each.value.member)
 }
-
-# module "private_service_connect" {
-#   source                     = "terraform-google-modules/network/google//modules/private-service-connect"
-#   version = "5.2.0"
-#   project_id                 = module.host_project.project_id
-#   network_self_link          = module.composer_vpc.network_self_link
-#   private_service_connect_ip = "10.3.0.5"
-#   forwarding_rule_target     = "all-apis"
-# }
-
-
-resource "null_resource" "provision_alloydb" {
-    provisioner "local-exec" {
-        interpreter = ["/bin/bash", "-c"]
-        command     = <<EOF
-gcloud beta alloydb clusters create ${var.alloycluster} --password=${var.alloyclusterpassword} --network=${local.vpc_name} --region=${var.region} --project=${var.project_id}
-gcloud beta alloydb instances create ${var.alloyinstance} --instance-type=${var.alloyinstancetype} --cpu-count=${var.alloyinstancecpuecount} --region=${var.region} --cluster=${var.alloycluster} --project=${var.project_id}
-EOF
-        }
-        depends_on = [google_service_networking_connection.private_vpc_connection]
-}
-
-
-resource "null_resource" "provision_db" {
-    provisioner "local-exec" {
-        interpreter = ["/bin/bash", "-c"]
-        command     = <<EOF
-gcloud compute ssh alloydb-cli-001 --zone=${var.zone} --command="bash -s" <<EOF
-sudo apt-get update -y
-sudo apt-get install postgresql-client -y
-psql -h $(gcloud beta alloydb instances describe thealloyinstance --cluster=thealloycluser --region=${var.region} --flatten=ipAddress --format="value(scope())") -U postgres
-CREATE DATABASE alloydb_test;
-EOF"
-EOF
-}
-        depends_on = [null_resource.provision_alloydb]
-}
-
-# resource "google_compute_firewall" "default" {
-#   name    = "test-firewall"
-#   network = google_compute_network.vpc.name
-
-#   allow {
-#     protocol = "icmp"
-#   }
-
-#   allow {
-#     protocol = "tcp"
-#     ports    = ["80", "8080", "1000-2000"]
-#   }
-
-#   source_tags = ["web"]
-# }
-
-
-
-# # We define a the vm firewall rules:
-# module "firewall_rules" {
-#   source  = "terraform-google-modules/network/google//modules/firewall-rules"
-#   version = "4.1.0"
-
-#   project_id   = var.project
-#   network_name = google_compute_network.vpc_network.name
-
-#   rules = [
-#     {
-#       name                    = "looker-firewall-allow-node-internal"
-#       description             = null
-#       direction               = "INGRESS"
-#       priority                = null
-#       ranges                  = [element(module.looker_vpc.subnets_ips, 0)]
-#       source_tags             = null
-#       source_service_accounts = null
-#       target_tags             = ["looker-node"]
-#       target_service_accounts = null
-#       allow = [{
-#         protocol = "tcp"
-#         ports    = ["1551", "61616", "1552", "8983", "9090"]
-#       }]
-#       deny = []
-#       log_config = {
-#         metadata = "INCLUDE_ALL_METADATA"
-#       }
-#     },
- 
-#     },
-#     {
-#       name                    = "looker-firewall-iap"
-#       description             = null
-#       direction               = "INGRESS"
-#       priority                = null
-#       ranges                  = ["35.235.240.0/20"]
-#       source_tags             = null
-#       source_service_accounts = null
-#       target_tags             = null
-#       target_service_accounts = null
-#       allow = [{
-#         protocol = "tcp"
-#         ports    = ["22"]
-#       }]
-#       deny = []
-#       log_config = {
-#         metadata = "INCLUDE_ALL_METADATA"
-#       }
-#     }
-#   ]
-# }
-
-#https://medium.com/google-cloud/a-hitchhikers-guide-to-gcp-service-account-impersonation-in-terraform-af98853ebd37
-
-# module "dataflow-job" {
-#   source                = "../../"
-#   project_id            = var.project_id
-#   name                  = "dlp_example_${null_resource.download_sample_cc_into_gcs.id}_${null_resource.deinspection_template_setup.id}"
-#   on_delete             = "cancel"
-#   region                = var.region
-#   zone                  = "${var.region}-a"
-#   template_gcs_path     = "gs://dataflow-templates/latest/Stream_DLP_GCS_Text_to_BigQuery"
-#   temp_gcs_location     = module.dataflow-bucket.name
-#   service_account_email = var.service_account_email
-#   max_workers           = 5
-
-#   parameters = {
-#     inputFilePattern       = "gs://${module.dataflow-bucket.name}/cc_records.csv"
-#     datasetName            = google_bigquery_dataset.default.dataset_id
-#     batchSize              = 1000
-#     dlpProjectId           = var.project_id
-#     deidentifyTemplateName = "projects/${var.project_id}/deidentifyTemplates/15"
-#   }
-# }
-
-# resource "null_resource" "destroy_deidentify_template" {
-#   triggers = {
-#     project_id = var.project_id
-#   }
