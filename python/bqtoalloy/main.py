@@ -119,16 +119,12 @@ class db_writer():
 def run(save_main_session=True):
     beam_options = PipelineOptions()
     args = beam_options.view_as(MyOptions)
-    print("this is the ip..")
-    print(args.destinationip)
     with beam.Pipeline(options=beam_options) as p:
         db_source = db_reader(args.bqprojectid, args.dataset, args.table, args.limit)
         db = db_writer(args.destinationip, args.port, args.alloyusername, args.destinationpassword, args.destinationtable, args.database_name)
-        print(db.sink_config())
         result = (
             p | beam.io.ReadFromBigQuery(use_standard_sql=True, query=db_source.sql_query())
               | beam.Map(print))
-              # here is where we would call the DLP module TKTKTK
         data = beam.io.Read(result)
         data |'write to db' >> relational_db.Write(
             source_config = (db.sink_config()),
