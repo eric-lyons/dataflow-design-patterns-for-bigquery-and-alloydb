@@ -126,11 +126,7 @@ def run(save_main_session=True):
             p | beam.io.ReadFromBigQuery(use_standard_sql=True, query=db_source.sql_query())
               | beam.Map(print))
         data = beam.io.Read(result)
-        data |'write to db' >> relational_db.Write(
-            source_config = (db.sink_config()),
-            table_config = (db.table_config())
-
-        )
+        data |'write to db' >> relational_db.Write(source_config = (db.sink_config()),table_config = (db.table_config()))
 
 
 if __name__ == '__main__':
