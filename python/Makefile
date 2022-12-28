@@ -1,14 +1,15 @@
 GCP_PROJECT ?= [CHANGE]
 GCP_REGION ?= [CHANGE]
 DATASET ?= [CHANGE]
+TABLE ?= [CHANGE]
+LIMIT ?= [CHANGE]
+BQPROJECTID ?= [CHANGE]
 ALLOYUSERNAME ?= [CHANGE]
 DATABASE_NAME ?= [CHANGE]
 PORT ?= [CHANGE]
 DESTINATION_TABLE ?= [CHANGE]
 DESTINATION_PASSWORD ?= [CHANGE]
-TABLE ?= [CHANGE]
-LIMIT ?= [CHANGE]
-BQPROJECTID ?= [CHANGE]
+DESTINATION_IP ?= [CHANGE]
 TEMPLATE_NAME ?= beam-demo
 TEMPLATE_TAG ?= 0.1.1
 PROJECT_NUMBER ?= $$(gcloud projects list --filter=${GCP_PROJECT} --format="value(PROJECT_NUMBER)")
@@ -70,6 +71,6 @@ run: ## Run the Dataflow Container
     --parameters port=${PORT} \
     --parameters destinationtable=${DESTINATION_TABLE} \
     --parameters table=${TABLE} \
-    --parameters destinationip=${DESTINATIONIP} \
+    --parameters destinationip=${DESTINATION_IP} \
     --parameters destinationpassword=${DESTINATION_PASSWORD} \
     --parameters bqprojectid=${BQPROJECTID}
