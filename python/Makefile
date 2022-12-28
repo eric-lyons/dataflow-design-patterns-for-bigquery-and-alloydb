@@ -74,3 +74,4 @@ run: ## Run the Dataflow Container
     --parameters destinationip=${DESTINATION_IP} \
     --parameters destinationpassword=${DESTINATION_PASSWORD} \
     --parameters bqprojectid=${BQPROJECTID}
+    --additional-experiments=enable_prime
