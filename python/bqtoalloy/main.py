@@ -8,8 +8,10 @@ import argparse
 import apache_beam as beam
 import logging
 from apache_beam.io import ReadFromText
+from apache_beam.io import Read
 from apache_beam.io import WriteToText
 from apache_beam.io import WriteToBigQuery
+from apache_beam.io import BigQuerySource
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 from apache_beam.io.gcp.internal.clients import bigquery
@@ -115,6 +117,14 @@ class db_writer():
         )
         return table_config
 
+         
+def map_to_beam_nuggets_data(element):
+    return {
+        'col1': element['col1'],
+        'col2': element['col2'],
+    }
+
+
 # this is the controller function
 def run(save_main_session=True):
     beam_options = PipelineOptions()
@@ -122,11 +132,19 @@ def run(save_main_session=True):
     with beam.Pipeline(options=beam_options) as p:
         db_source = db_reader(args.bqprojectid, args.dataset, args.table, args.limit)
         db = db_writer(args.destinationip, args.port, args.alloyusername, args.destinationpassword, args.destinationtable, args.database_name)
-        result = (
-            p | beam.io.ReadFromBigQuery(use_standard_sql=True, query=db_source.sql_query())
-              | beam.Map(print))
-        data = beam.io.Read(result)
-        data |'write to db' >> relational_db.Write(source_config = (db.sink_config()),table_config = (db.table_config()))
+              # Result from BigQuery.
+        result = (p | beam.io.ReadFromBigQuery(use_standard_sql=True, query=db_source.sql_query()))
+
+        # Sink result to GCS.
+        result | 'Write to GCS' >> WriteToText(URI)
+
+        # Map to result to Beam Nuggets data and Sink result to the database.
+        (result
+         | 'Map to beam nuggets data' >> beam.Map(map_to_beam_nuggets_data)
+         | 'Write to Database' >> relational_db.Write(
+                    source_config=(db.sink_config()),
+                    table_config=(db.table_config())
+                ))
 
 
 if __name__ == '__main__':
