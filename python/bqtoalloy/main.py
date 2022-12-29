@@ -109,7 +109,7 @@ class db_writer():
         )
 
         return sink_config
-    #
+    
     def table_config(self):
         table_config = relational_db.TableConfiguration(
             name=self.table_name,
