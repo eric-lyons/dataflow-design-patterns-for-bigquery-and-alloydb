@@ -41,9 +41,6 @@
         <li><a href="#built-with">Built With</a></li>
       </ul>
     </li>
-    <li>
-      <a href="#getting-started">Getting Started</a>
-      <ul>
         <li><a href="#prerequisites">Prerequisites</a></li>
         <li><a href="#installation">Installation</a></li>
       </ul>
@@ -79,10 +76,6 @@ This is a framework to allow users to quick start AlloyDB usage by migrating dat
 
 
 <!-- GETTING STARTED -->
-## Getting Started
-
-This is an example of how you may give instructions on setting up your project locally.
-To get a local copy up and running follow these simple example steps.
 
 ### Prerequisites
 An AlloyDB cluster and BigQuery Dataset/Table. If you do not already have these please see the terraform directory of the repo which will allow you to create these resources via IAC (infrastructure as code).
