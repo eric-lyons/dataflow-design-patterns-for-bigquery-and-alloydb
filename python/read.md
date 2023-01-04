@@ -109,7 +109,7 @@ CEATE TABLE TABLENAME (
    cd dataflow-design-patterns-for-bigquery-and-alloydb/python/
    ```
 
-4. Enter your configuration in the Makefile.
+4. Enter your configuration in the Makefile. Use vim or your favorite editor. 
 
    ```
    vim Makefile
@@ -129,7 +129,7 @@ CEATE TABLE TABLENAME (
    DESTINATION_IP ?= [CHANGE]
    ```
 
-5. Navigate to the bqtoalloy directory. Open the main.py file, please review the code and then specify the columns you would like written to AlloyDB, by editting this function, and replace the column names in both the key pairs.
+5. Navigate to the bqtoalloy directory. Open the main.py file, please review the code and then specify the columns you would like written to AlloyDB, by editting this function, and replace the column names in both the key pairs. If you had a two column table with the first column called orders and the second column called id, you would replace col1 and col2 in the example below with orders and id. 
 
     ```
     cd bqtoalloy
@@ -189,6 +189,8 @@ The Python based pipelines are targeted at moderately-technical data engineers o
 Some common use-case would be an analytics engineer who wants to explore the functionality of AlloyDB with real data that exists in his/her/their BigQuery Instance.
 
 This framework uses a Makefile to instatinate a Dataflow Flex template. This will create a Docker image in container registry and then you can re-use the template with the simple command of make run.
+
+AlloyDB can use the default network provided in a GCP project. This is generally too broad for most realworld use-cases. We would suggest setting up your own network to specific to your use-case. If you wish to specify a subnetwork, please add --subnetwork to the makefile where the dataflow parameters are set. For more information on how to properly pass this arg, [please visit this page](https://cloud.google.com/dataflow/docs/guides/specifying-networks). 
 
 ### The Code
 
