@@ -58,7 +58,7 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-This is a framework to allow users to quick start AlloyDB usage by migrating data from BigQuery to AlloyDB with a simple and fully cusomtizable Dataflow pipeline.
+This is a framework to allow users to quickly start AlloyDB usage by migrating data from BigQuery to AlloyDB with a simple and fully customizable Dataflow pipeline.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -80,14 +80,14 @@ This is a framework to allow users to quick start AlloyDB usage by migrating dat
 ### Prerequisites
 An AlloyDB cluster and BigQuery Dataset/Table. If you do not already have these please see the terraform directory of the repo which will allow you to create these resources via IAC (infrastructure as code).
 
-Among the parameters required to run the pipeline, there are three we would suggest setting as enviroment variables or using <a href="https://cloud.google.com/secret-manager"> Cloud Secret Manager </a> : DESTIONATION_IP, ALLOYUSERNAME, DESTINATION_IP.
+Among the parameters required to run the pipeline, there are three we would suggest setting as environment variables or using <a href="https://cloud.google.com/secret-manager"> Cloud Secret Manager </a> : DESTIONATION_IP, ALLOYUSERNAME, DESTINATION_IP.
 
 We would also suggest creating the schema in the AlloyDB table first to improve ease of use, if you want to use this table for other workflows. To do this, please use the PSQL CLI tool and use this command:
 
 For more information and details on this process, please visit this <a href="https://www.postgresql.org/docs/current/tutorial-table.html#:~:text=You%20can%20create%20a%20new,psql%20with%20the%20line%20breaks.">link </a>.
 
 ```
-CEATE TABLE TABLENAME (
+CREATE TABLE TABLENAME (
     order_id varchar(80),
     order_date varchar(80),
     ship_date varchar(80),
@@ -129,7 +129,7 @@ CEATE TABLE TABLENAME (
    DESTINATION_IP ?= [CHANGE]
    ```
 
-5. Navigate to the bqtoalloy directory. Open the main.py file, please review the code and then specify the columns you would like written to AlloyDB, by editting this function, and replace the column names in both the key pairs. If you had a two column table with the first column called orders and the second column called id, you would replace col1 and col2 in the example below with orders and id. 
+5. Navigate to the bqtoalloy directory. Open the main.py file, please review the code and then specify the columns you would like written to AlloyDB, by editing this function, and replace the column names in both the key pairs. If you had a two column table with the first column called orders and the second column called id, you would replace col1 and col2 in the example below with orders and id. 
 
     ```
     cd bqtoalloy
@@ -163,7 +163,7 @@ CEATE TABLE TABLENAME (
 
 9. In the GCloud search bar, enter "Dataflow". Select Dataflow jobs to check the progress.
 
-10. Once the job has completed, check the results in AlloyDB.
+10. Once the job is completed, check the results in AlloyDB.
 
 11. If you hardcoded any parameters, remove any passwords or PII from the Makefile if it is not in use.
 
@@ -188,15 +188,15 @@ The Python based pipelines are targeted at moderately-technical data engineers o
 <br>
 Some common use-case would be an analytics engineer who wants to explore the functionality of AlloyDB with real data that exists in his/her/their BigQuery Instance.
 
-This framework uses a Makefile to instatinate a Dataflow Flex template. This will create a Docker image in container registry and then you can re-use the template with the simple command of make run.
+This framework uses a Makefile to instantiate a Dataflow Flex template. This will create a Docker image in the container registry and then you can re-use the template with the simple command of make run.
 
-AlloyDB can use the default network provided in a GCP project. This is generally too broad for most realworld use-cases. We would suggest setting up your own network to specific to your use-case. If you wish to specify a subnetwork, please add --subnetwork to the makefile where the dataflow parameters are set. For more information on how to properly pass this arg, [please visit this page](https://cloud.google.com/dataflow/docs/guides/specifying-networks). 
+AlloyDB can use the default network provided in a GCP project. This is generally too broad for most real world use-cases. We would suggest setting up your own network specific to your use-case. If you wish to specify a subnetwork, please add --subnetwork to the makefile where the dataflow parameters are set. For more information on how to properly pass this arg, [please visit this page](https://cloud.google.com/dataflow/docs/guides/specifying-networks). 
 
 ### The Code
 
-The pipeline is ran via the run function. This utlizies the classes to instatiate the connections with Bigquery via Bigquery.io and Alloy via Beam Nuggets. These classes are controlled by the parameters specifed in the Makefile which are used in the MyOptions class. This uses Python's argparge library.
+The pipeline is ran via the run function. This utilizes the classes to instantiate the connections with Bigquery via Bigquery.io and Alloy via Beam Nuggets. These classes are controlled by the parameters specified in the Makefile which are used in the MyOptions class. This uses Python's argparse library.
 
-There is the map_to_beam_nuggets_data function which is used to tranform the output of BigQuery into the structure that Beam Nuggets requires. This can also be parameterized, but in order to make sure users review the code, they will need to manually update this right now.
+There is the map_to_beam_nuggets_data function which is used to transform the output of BigQuery into the structure that Beam Nuggets requires. This can also be parameterized, but in order to make sure users review the code, they will need to manually update this right now.
 
 To update this pipeline to write to another database besides AlloyDb, please review the sink_config definition and redefine the drivername to the corresponding DB.
 
@@ -210,7 +210,7 @@ To update this pipeline to write to another database besides AlloyDb, please rev
 
 
 - [ ] Support migration of nested records
-- [ ] Add bad record queue for failed writes to AlloyDB.
+- [ ] Add a bad record queue for failed writes to AlloyDB.
 - [ ] Add the ability to encrypt certain columns with Cloud KMS
 - [ ] Add customizable unit tests
 
@@ -244,3 +244,5 @@ Don't forget to give the project a star! Thanks again!
 Distributed under the MIT License. See `LICENSE.txt` for more information.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
